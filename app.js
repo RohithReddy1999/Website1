@@ -1,7 +1,5 @@
 //jshint esversion:6
 // <---Packages Importing--->
-//Enviromental variables
-require('dotenv').config();
 const express=require('express');
 const ejs=require('ejs');
 const bodyParser=require('body-parser');
@@ -10,9 +8,9 @@ const methodOverride = require('method-override');
 //for shortcut-icon in browser tab
 const favicon = require('serve-favicon');
 const path = require('path');
-//Encryption package
-const encrypt=require("mongoose-encryption");
-
+//Hashing package package bycrypt and Salting
+const bcrypt=require('bcrypt');
+const saltRounds = 10;
 
 // <---Create instance of express 'app' and adding other package functionalities to 'app'--->
 const app=express();
@@ -32,7 +30,6 @@ const userschema=new mongoose.Schema({
     password:String
 });
 
-userschema.plugin(encrypt, { secret: process.env.SECRET ,encryptedFields: ['password'] });
 
 const User=new mongoose.model("user",userschema);
 
@@ -54,16 +51,23 @@ app.route("/login")
         User.findOne({email:req.body.username},function(err, user)
         {   
 
-            if(user.password===req.body.password)
-            {
-                res.render("Secrets");
-            }
-            else
-            {
-                console.log(err);
-                res.render("login");
-            
-            }
+           
+           if(err)
+           {
+               console.log("Error!");
+           }
+           else{
+               if(user)
+               {
+                bcrypt.compare(req.body.password, user.password,function(err, result) {
+                    if(result)
+                    {
+                        res.render("secrets");
+                    }
+                });
+               }
+           }
+           
         })
 
 
@@ -77,21 +81,24 @@ app.route("/register")
     })
     .post(function(req,res)
     {   
-        const u1=new User({
-            email:req.body.username,
-            password:req.body.password
-        });
-        u1.save(function(err)
-        {
-            if(!err)
-            {
-                res.render("secrets");
-            }
-            else{
-                console.log(err);
-            }
-        });
 
+        bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+            const u1=new User({
+                email:req.body.username,
+                password:hash
+            });
+            u1.save(function(err)
+            {
+                if(!err)
+                {
+                    res.render("secrets");
+                }
+                else{
+                    console.log(err);
+                }
+            });
+        });
+        
     })
 
 app.listen('3000',function(req,res){
