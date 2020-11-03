@@ -8,8 +8,11 @@ const methodOverride = require('method-override');
 //for shortcut-icon in browser tab
 const favicon = require('serve-favicon');
 const path = require('path');
-//Hashing package package
-const md5=require('md5');
+//Session
+var session = require('express-session');
+var passport=require('passport');
+var passportlocal=require('passport-local');
+var passportlocalmongoose=require('passport-local-mongoose');
 
 
 // <---Create instance of express 'app' and adding other package functionalities to 'app'--->
@@ -20,9 +23,17 @@ app.use(express.static("public"));
 app.use(methodOverride('_method'));
 //to implement  shortcut-icon in browser tab 
 app.use(express.static(path.join(__dirname, 'public'))); 
+app.use(session({
+    secret:"Our little secret",
+    resave: false,
+    saveUninitialized: true
+}))
+app.use(passport.initialize());
+app.use(passport.session());
 
 // <--- Create database userDB--->
 mongoose.connect("mongodb://localhost:27017/userDB", {useNewUrlParser: true,useUnifiedTopology: true});
+mongoose.set('useCreateIndex', true);  
 
 // <---creating shema--->
 const userschema=new mongoose.Schema({
@@ -30,8 +41,16 @@ const userschema=new mongoose.Schema({
     password:String
 });
 
+userschema.plugin(passportlocalmongoose);
 
 const User=new mongoose.model("user",userschema);
+
+
+passport.use(User.createStrategy());
+ 
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
 
 //Home route
 app.route("/")
@@ -39,6 +58,16 @@ app.route("/")
     {
         res.render("home");
     })
+
+// Logout route
+
+app.route("/logout")
+    .get(function(req,res)
+    {
+        req.logout();
+        res.redirect("/");
+    })
+
 
 
 //Login Route
@@ -48,24 +77,45 @@ app.route("/login")
         res.render("login");
     })
     .post(function(req,res){
-        User.findOne({email:req.body.username},function(err, user)
-        {   
-
-            if(user.password===md5(req.body.password))
-            {
-                res.render("Secrets");
-            }
-            else
+        const user=new User({
+            username:req.body.username,
+            password:req.body.password
+        });
+        req.login(user,function(err)
+        {
+            if(err)
             {
                 console.log(err);
-                res.render("login");
-            
+
+            }
+            else{
+                passport.authenticate("local")(req,res,function()
+                {
+                    res.redirect("/secrets");
+                });
             }
         })
+              
 
 
     })
 
+
+
+
+// Secrets route
+app.route("/secrets")
+    .get(function(req,res)
+    {
+        if(req.isAuthenticated())
+        {
+            res.render("secrets");
+        }
+        else
+        {
+            res.redirect("/login");
+        }
+    })
 //Register route
 app.route("/register")
     .get(function(req,res)
@@ -74,21 +124,22 @@ app.route("/register")
     })
     .post(function(req,res)
     {   
-        const u1=new User({
-            email:req.body.username,
-            password:md5(req.body.password)
-        });
-        u1.save(function(err)
+        User.register({username:req.body.username},req.body.password,function(err,user)
         {
-            if(!err)
+            if(err)
             {
-                res.render("secrets");
+                console.log(err);
+                res.rendirect("/register");
             }
             else{
-                console.log(err);
+                passport.authenticate("local")(req,res,function()
+                {
+                    res.redirect("/secrets");
+                });
             }
-        });
-
+        })
+        
+        
     })
 
 app.listen('3000',function(req,res){
